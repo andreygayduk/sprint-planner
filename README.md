@@ -56,6 +56,7 @@ Team URL: `/t/platform/backlog`
 - Sprints with capacity vs commitment meter
 - Assign/unassign backlog items to a sprint board
 - Per-member capacity that rolls up to team capacity
+- Team Timeline with Development and Feature Testing swimlanes across sprints
 
 ## Scripts
 

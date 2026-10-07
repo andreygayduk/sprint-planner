@@ -32,6 +32,11 @@ enum Priority {
   urgent
 }
 
+enum WorkLane {
+  development
+  feature_testing
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -83,15 +88,16 @@ model VerificationToken {
 }
 
 model Team {
-  id           String           @id @default(cuid())
-  name         String
-  slug         String           @unique
-  memberships  Membership[]
-  invites      Invite[]
-  sprints      Sprint[]
-  backlogItems BacklogItem[]
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id             String          @id @default(cuid())
+  name           String
+  slug           String          @unique
+  memberships    Membership[]
+  invites        Invite[]
+  sprints        Sprint[]
+  backlogItems   BacklogItem[]
+  timelineBlocks TimelineBlock[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model Membership {
@@ -142,20 +148,37 @@ model Sprint {
 }
 
 model BacklogItem {
-  id          String        @id @default(cuid())
-  teamId      String
-  title       String
-  description String?       @db.Text
-  storyPoints Int?
-  priority    Priority      @default(medium)
-  status      BacklogStatus @default(backlog)
-  sortOrder   Int           @default(0)
-  team        Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  sprintItem  SprintItem?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String          @id @default(cuid())
+  teamId         String
+  title          String
+  description    String?         @db.Text
+  storyPoints    Int?
+  priority       Priority        @default(medium)
+  status         BacklogStatus   @default(backlog)
+  sortOrder      Int             @default(0)
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sprintItem     SprintItem?
+  timelineBlocks TimelineBlock[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([teamId, sortOrder])
+}
+
+model TimelineBlock {
+  id            String      @id @default(cuid())
+  teamId        String
+  backlogItemId String
+  lane          WorkLane
+  startDate     DateTime
+  endDate       DateTime
+  team          Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  backlogItem   BacklogItem @relation(fields: [backlogItemId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([teamId, startDate, endDate])
+  @@index([backlogItemId])
 }
 
 model SprintItem {

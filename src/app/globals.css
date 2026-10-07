@@ -8,6 +8,8 @@
   --muted: #5b6b78;
   --accent: #0f6e56;
   --accent-soft: #e6f4ef;
+  --lane-test: #1f4e79;
+  --lane-test-soft: #e8eef5;
   --danger: #b42318;
   --warning: #b54708;
 }
@@ -20,6 +22,8 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-lane-test: var(--lane-test);
+  --color-lane-test-soft: var(--lane-test-soft);
   --color-danger: var(--danger);
   --color-warning: var(--warning);
   --font-sans: var(--font-geist-sans);
