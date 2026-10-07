@@ -38,19 +38,20 @@ enum WorkLane {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  accounts      Account[]
-  sessions      Session[]
-  memberships   Membership[]
-  invitesSent   Invite[]  @relation("InviteSender")
-  capacities    MemberCapacity[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String          @id @default(cuid())
+  name           String?
+  email          String          @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String?
+  accounts       Account[]
+  sessions       Session[]
+  memberships    Membership[]
+  invitesSent    Invite[]        @relation("InviteSender")
+  capacities     MemberCapacity[]
+  timelineBlocks TimelineBlock[] @relation("TimelineBlockAssignee")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model Account {
@@ -101,16 +102,29 @@ model Team {
 }
 
 model Membership {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   teamId    String
   userId    String
-  role      Role     @default(member)
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role      Role            @default(member)
+  team      Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holidays  MemberHoliday[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@unique([teamId, userId])
+}
+
+model MemberHoliday {
+  id           String     @id @default(cuid())
+  membershipId String
+  date         DateTime
+  name         String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([membershipId, date])
+  @@index([membershipId])
 }
 
 model Invite {
@@ -169,16 +183,19 @@ model TimelineBlock {
   id            String      @id @default(cuid())
   teamId        String
   backlogItemId String
+  assigneeId    String
   lane          WorkLane
   startDate     DateTime
   endDate       DateTime
   team          Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
   backlogItem   BacklogItem @relation(fields: [backlogItemId], references: [id], onDelete: Cascade)
+  assignee      User        @relation("TimelineBlockAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@index([teamId, startDate, endDate])
   @@index([backlogItemId])
+  @@index([assigneeId])
 }
 
 model SprintItem {

@@ -57,6 +57,7 @@ Team URL: `/t/platform/backlog`
 - Assign/unassign backlog items to a sprint board
 - Per-member capacity that rolls up to team capacity
 - Team Timeline with Development and Feature Testing swimlanes across sprints
+- Per-member holidays; timeline dims weekends/holidays and schedules blocks on the assignee’s working days
 
 ## Scripts
 

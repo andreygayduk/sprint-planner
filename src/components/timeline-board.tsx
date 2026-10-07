@@ -27,11 +27,18 @@ import {
 } from "@/app/actions/timeline";
 import { Badge, Button, Panel } from "@/components/ui";
 import {
-  addDays,
   clampDay,
   computeVisibleRange,
   daysBetween,
+  defaultWorkingEnd,
   enumerateDays,
+  holidaySet,
+  isNonWorkingDay,
+  isWeekend,
+  nextWorkingDay,
+  resizeWorkingEnd,
+  resizeWorkingStart,
+  shiftWorkingRange,
   stackRows,
   type WorkLaneValue,
 } from "@/lib/timeline-dates";
@@ -40,7 +47,7 @@ const DAY_WIDTH = 40;
 const ROW_HEIGHT = 36;
 const LANE_PAD = 8;
 const LABEL_WIDTH = 144;
-const DEFAULT_DURATION_DAYS = 2;
+const DEFAULT_WORKING_SPAN = 2;
 
 export type TimelineItemView = {
   id: string;
@@ -50,11 +57,19 @@ export type TimelineItemView = {
   status: "backlog" | "committed" | "done";
 };
 
+export type TimelineMemberView = {
+  id: string;
+  name: string;
+  holidays: { date: string; name: string }[];
+};
+
 export type TimelineBlockView = {
   id: string;
   backlogItemId: string;
   title: string;
   lane: WorkLaneValue;
+  assigneeId: string;
+  assigneeName: string;
   startDate: string;
   endDate: string;
 };
@@ -93,6 +108,18 @@ function formatAxisDay(day: string) {
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+function memberLabel(member: TimelineMemberView) {
+  return member.name;
+}
+
+function holidaysForMember(
+  members: TimelineMemberView[],
+  assigneeId: string,
+) {
+  const member = members.find((row) => row.id === assigneeId);
+  return holidaySet((member?.holidays ?? []).map((row) => row.date));
 }
 
 function UnscheduledCard({
@@ -177,6 +204,8 @@ function laneFromPoint(clientX: number, clientY: number): WorkLaneValue | null {
 
 function TimelineBar({
   block,
+  members,
+  holidayDays,
   rangeStart,
   dayWidth,
   row,
@@ -184,6 +213,8 @@ function TimelineBar({
   onDelete,
 }: {
   block: TimelineBlockView;
+  members: TimelineMemberView[];
+  holidayDays: ReadonlySet<string>;
   rangeStart: string;
   dayWidth: number;
   row: number;
@@ -202,27 +233,44 @@ function TimelineBar({
   function previewFromDelta(clientX: number): TimelineBlockView {
     const deltaDays = Math.round((clientX - originX.current) / dayWidth);
     const original = originBlock.current;
-    const duration = daysBetween(original.startDate, original.endDate);
+    const holidays = holidayDays;
 
     if (dragMode.current === "move") {
-      const nextStart = addDays(original.startDate, deltaDays);
+      const shifted = shiftWorkingRange(
+        original.startDate,
+        original.endDate,
+        deltaDays,
+        holidays,
+      );
       return {
         ...original,
-        startDate: nextStart,
-        endDate: addDays(nextStart, duration),
+        startDate: shifted.startDate,
+        endDate: shifted.endDate,
       };
     }
 
     if (dragMode.current === "resize-start") {
-      let nextStart = addDays(original.startDate, deltaDays);
-      if (nextStart > original.endDate) nextStart = original.endDate;
-      return { ...original, startDate: nextStart };
+      return {
+        ...original,
+        startDate: resizeWorkingStart(
+          original.startDate,
+          original.endDate,
+          deltaDays,
+          holidays,
+        ),
+      };
     }
 
     if (dragMode.current === "resize-end") {
-      let nextEnd = addDays(original.endDate, deltaDays);
-      if (nextEnd < original.startDate) nextEnd = original.startDate;
-      return { ...original, endDate: nextEnd };
+      return {
+        ...original,
+        endDate: resizeWorkingEnd(
+          original.startDate,
+          original.endDate,
+          deltaDays,
+          holidays,
+        ),
+      };
     }
 
     return original;
@@ -277,7 +325,7 @@ function TimelineBar({
         top: LANE_PAD + row * ROW_HEIGHT,
         height: ROW_HEIGHT - 6,
       }}
-      title={`${display.title} (${display.startDate} → ${display.endDate})`}
+      title={`${display.title} · ${display.assigneeName} (${display.startDate} → ${display.endDate})`}
     >
       <button
         type="button"
@@ -290,9 +338,43 @@ function TimelineBar({
         onPointerDown={(event) => onPointerDown(event, "move")}
       >
         <span className="truncate font-medium">{display.title}</span>
+        <select
+          className="ml-auto max-w-[72px] shrink-0 truncate rounded border-0 bg-black/15 px-1 py-0.5 text-[10px] text-inherit outline-none"
+          value={display.assigneeId}
+          title={display.assigneeName}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => {
+            const assigneeId = event.target.value;
+            const member = members.find((row) => row.id === assigneeId);
+            if (!member) return;
+            const holidays = holidaysForMember(members, assigneeId);
+            const startDate = nextWorkingDay(display.startDate, holidays);
+            let endDate = display.endDate;
+            if (endDate < startDate) {
+              endDate = defaultWorkingEnd(startDate, holidays, DEFAULT_WORKING_SPAN);
+            } else if (isNonWorkingDay(endDate, holidays)) {
+              endDate = nextWorkingDay(endDate, holidays);
+              if (endDate < startDate) endDate = startDate;
+            }
+            onCommit({
+              ...display,
+              assigneeId,
+              assigneeName: memberLabel(member),
+              startDate,
+              endDate,
+            });
+          }}
+        >
+          {members.map((member) => (
+            <option key={member.id} value={member.id}>
+              {memberLabel(member)}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
-          className="ml-auto shrink-0 rounded px-1 text-[10px] opacity-80 hover:bg-black/20 hover:opacity-100"
+          className="shrink-0 rounded px-1 text-[10px] opacity-80 hover:bg-black/20 hover:opacity-100"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
@@ -314,11 +396,15 @@ function TimelineBar({
 
 export function TimelineBoard({
   teamSlug,
+  currentUserId,
+  members,
   items,
   blocks,
   sprints,
 }: {
   teamSlug: string;
+  currentUserId: string;
+  members: TimelineMemberView[];
   items: TimelineItemView[];
   blocks: TimelineBlockView[];
   sprints: TimelineSprintView[];
@@ -329,7 +415,56 @@ export function TimelineBoard({
   const [, startTransition] = useTransition();
   const [optimisticBlocks, setOptimisticBlocks] = useOptimistic(blocks);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [defaultAssigneeId, setDefaultAssigneeId] = useState(() => {
+    if (members.some((member) => member.id === currentUserId)) {
+      return currentUserId;
+    }
+    return members[0]?.id ?? currentUserId;
+  });
   const chartRef = useRef<HTMLDivElement>(null);
+
+  const holidaysByAssignee = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const member of members) {
+      map.set(
+        member.id,
+        holidaySet(member.holidays.map((holiday) => holiday.date)),
+      );
+    }
+    return map;
+  }, [members]);
+
+  const unionHolidayMeta = useMemo(() => {
+    const map = new Map<string, { name: string; memberNames: string[] }[]>();
+    for (const member of members) {
+      for (const holiday of member.holidays) {
+        const list = map.get(holiday.date) ?? [];
+        list.push({ name: holiday.name, memberNames: [memberLabel(member)] });
+        map.set(holiday.date, list);
+      }
+    }
+    // Merge same-name entries per day
+    const merged = new Map<string, string>();
+    for (const [day, entries] of map) {
+      const byName = new Map<string, string[]>();
+      for (const entry of entries) {
+        const names = byName.get(entry.name) ?? [];
+        names.push(...entry.memberNames);
+        byName.set(entry.name, names);
+      }
+      const parts: string[] = [];
+      for (const [name, names] of byName) {
+        parts.push(`${name} (${[...new Set(names)].join(", ")})`);
+      }
+      merged.set(day, parts.join("; "));
+    }
+    return merged;
+  }, [members]);
+
+  const unionHolidayDays = useMemo(
+    () => holidaySet(unionHolidayMeta.keys()),
+    [unionHolidayMeta],
+  );
 
   const range = useMemo(
     () =>
@@ -412,12 +547,41 @@ export function TimelineBoard({
     return days[index] ?? range.start;
   }
 
+  function dayColumnClass(day: string) {
+    if (unionHolidayDays.has(day)) {
+      return "bg-warning/15 text-warning";
+    }
+    if (isWeekend(day)) {
+      return "bg-black/[0.04] text-muted/70";
+    }
+    return "text-muted";
+  }
+
+  function dayLaneClass(day: string) {
+    if (unionHolidayDays.has(day)) {
+      return "bg-warning/15";
+    }
+    if (isWeekend(day)) {
+      return "bg-black/[0.04]";
+    }
+    return "";
+  }
+
+  function dayTooltip(day: string) {
+    const parts: string[] = [];
+    if (isWeekend(day)) parts.push("Weekend");
+    const holidayLabel = unionHolidayMeta.get(day);
+    if (holidayLabel) parts.push(holidayLabel);
+    return parts.length > 0 ? `${day}: ${parts.join(" · ")}` : day;
+  }
+
   function persistCreate(next: TimelineBlockView) {
     startTransition(async () => {
       setOptimisticBlocks((current) => [...current, next]);
       await createTimelineBlockAction({
         teamSlug,
         backlogItemId: next.backlogItemId,
+        assigneeId: next.assigneeId,
         lane: next.lane,
         startDate: next.startDate,
         endDate: next.endDate,
@@ -434,6 +598,7 @@ export function TimelineBoard({
         teamSlug,
         blockId: next.id,
         lane: next.lane,
+        assigneeId: next.assigneeId,
         startDate: next.startDate,
         endDate: next.endDate,
       });
@@ -475,6 +640,12 @@ export function TimelineBoard({
     );
     if (already) return;
 
+    const assignee =
+      members.find((member) => member.id === defaultAssigneeId) ?? members[0];
+    if (!assignee) return;
+
+    const holidays = holidaysByAssignee.get(assignee.id) ?? holidaySet([]);
+
     const activator = event.activatorEvent;
     const startX =
       activator && "clientX" in activator && typeof activator.clientX === "number"
@@ -484,14 +655,16 @@ export function TimelineBoard({
       startX != null
         ? dayFromClientX(startX + event.delta.x)
         : clampDay(new Date().toISOString().slice(0, 10), range.start, range.end);
-    const startDate = dropDay;
-    const endDate = addDays(startDate, DEFAULT_DURATION_DAYS);
+    const startDate = nextWorkingDay(dropDay, holidays);
+    const endDate = defaultWorkingEnd(startDate, holidays, DEFAULT_WORKING_SPAN);
 
     persistCreate({
       id: `temp-${itemId}-${lane}`,
       backlogItemId: itemId,
       title: item.title,
       lane,
+      assigneeId: assignee.id,
+      assigneeName: memberLabel(assignee),
       startDate,
       endDate,
     });
@@ -514,6 +687,22 @@ export function TimelineBoard({
           <p className="mb-3 text-xs text-muted">
             Drag onto a lane to schedule development or feature testing.
           </p>
+          {members.length > 0 ? (
+            <label className="mb-3 flex flex-col gap-1 text-xs text-muted">
+              Default assignee
+              <select
+                className="rounded-md border border-border bg-white px-2 py-1.5 text-sm text-foreground"
+                value={defaultAssigneeId}
+                onChange={(event) => setDefaultAssigneeId(event.target.value)}
+              >
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {memberLabel(member)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto">
             {unscheduled.length === 0 ? (
               <p className="text-sm text-muted">All items are fully scheduled.</p>
@@ -583,8 +772,9 @@ export function TimelineBoard({
                   {days.map((day) => (
                     <div
                       key={day}
-                      className="shrink-0 border-r border-border/70 px-0.5 text-center text-[10px] leading-8 text-muted"
+                      className={`shrink-0 border-r border-border/70 px-0.5 text-center text-[10px] leading-8 ${dayColumnClass(day)}`}
                       style={{ width: DAY_WIDTH }}
+                      title={dayTooltip(day)}
                     >
                       {formatAxisDay(day)}
                     </div>
@@ -601,8 +791,9 @@ export function TimelineBoard({
                       {days.map((day) => (
                         <div
                           key={day}
-                          className="h-full border-r border-border/50"
+                          className={`h-full border-r border-border/50 ${dayLaneClass(day)}`}
                           style={{ width: DAY_WIDTH }}
+                          title={dayTooltip(day)}
                         />
                       ))}
                     </div>
@@ -610,6 +801,11 @@ export function TimelineBoard({
                       <TimelineBar
                         key={block.id}
                         block={block}
+                        members={members}
+                        holidayDays={
+                          holidaysByAssignee.get(block.assigneeId) ??
+                          holidaySet([])
+                        }
                         rangeStart={range.start}
                         dayWidth={DAY_WIDTH}
                         row={stacks[lane.id].rows.get(block.id) ?? 0}
@@ -631,7 +827,14 @@ export function TimelineBoard({
               <span className="h-2.5 w-2.5 rounded-sm bg-lane-test" /> Feature
               testing
             </span>
-            <span>Drag edges to resize · drag bar to move</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm border border-border bg-black/[0.08]" />{" "}
+              Weekend
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-sm bg-warning/25" /> Holiday
+            </span>
+            <span>Drag edges to resize · drag bar to move · skips non-working days</span>
             <Button
               type="button"
               variant="ghost"

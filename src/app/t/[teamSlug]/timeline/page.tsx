@@ -12,19 +12,30 @@ export default async function TimelinePage({
   const { teamSlug } = await params;
   const ctx = await getTeamContext(teamSlug);
 
-  const [items, blocks, sprints] = await Promise.all([
+  const [items, blocks, sprints, memberships] = await Promise.all([
     prisma.backlogItem.findMany({
       where: { teamId: ctx.teamId },
       orderBy: [{ status: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.timelineBlock.findMany({
       where: { teamId: ctx.teamId },
-      include: { backlogItem: true },
+      include: {
+        backlogItem: true,
+        assignee: { select: { id: true, name: true, email: true } },
+      },
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     }),
     prisma.sprint.findMany({
       where: { teamId: ctx.teamId },
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.membership.findMany({
+      where: { teamId: ctx.teamId },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        holidays: { orderBy: { date: "asc" } },
+      },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -33,10 +44,19 @@ export default async function TimelinePage({
       <div className="mx-auto max-w-7xl">
         <PageHeader
           title="Timeline"
-          description="Plan development and feature testing across sprints on one team timeline."
+          description="Plan development and feature testing across sprints on one team timeline. Weekends and member holidays are dimmed; blocks skip the assignee’s non-working days."
         />
         <TimelineBoard
           teamSlug={teamSlug}
+          currentUserId={ctx.user.id!}
+          members={memberships.map((membership) => ({
+            id: membership.user.id,
+            name: membership.user.name ?? membership.user.email,
+            holidays: membership.holidays.map((holiday) => ({
+              date: toDayString(holiday.date),
+              name: holiday.name,
+            })),
+          }))}
           items={items.map((item) => ({
             id: item.id,
             title: item.title,
@@ -49,6 +69,8 @@ export default async function TimelinePage({
             backlogItemId: block.backlogItemId,
             title: block.backlogItem.title,
             lane: block.lane,
+            assigneeId: block.assigneeId,
+            assigneeName: block.assignee.name ?? block.assignee.email,
             startDate: toDayString(block.startDate),
             endDate: toDayString(block.endDate),
           }))}

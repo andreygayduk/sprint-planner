@@ -1,10 +1,15 @@
 import {
+  createMemberHolidayAction,
+  deleteMemberHolidayAction,
+} from "@/app/actions/holidays";
+import {
   inviteMemberAction,
   removeMemberAction,
   updateMemberRoleAction,
 } from "@/app/actions/teams";
 import { Badge, Button, Input, Label, PageHeader, Panel, Select } from "@/components/ui";
 import { canManageTeam, getTeamContext } from "@/lib/team-context";
+import { toDayString } from "@/lib/timeline-dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function MembersPage({
@@ -19,7 +24,10 @@ export default async function MembersPage({
   const [members, invites] = await Promise.all([
     prisma.membership.findMany({
       where: { teamId: ctx.teamId },
-      include: { user: true },
+      include: {
+        user: true,
+        holidays: { orderBy: { date: "asc" } },
+      },
       orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     }),
     prisma.invite.findMany({
@@ -32,7 +40,7 @@ export default async function MembersPage({
     <div>
       <PageHeader
         title="Members"
-        description="Manage who can plan sprints for this team."
+        description="Manage who can plan sprints for this team, and each member’s holidays."
       />
 
       {manage ? (
@@ -62,43 +70,119 @@ export default async function MembersPage({
         </Panel>
       ) : null}
 
-      <Panel className="mb-6 space-y-3">
+      <Panel className="mb-6 space-y-6">
         <h2 className="text-lg font-semibold">Team roster</h2>
         {members.map((member) => (
           <div
             key={member.id}
-            className="flex flex-col gap-3 border-b border-border py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+            className="space-y-3 border-b border-border pb-6 last:border-b-0 last:pb-0"
           >
-            <div>
-              <div className="font-medium">
-                {member.user.name ?? member.user.email}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-medium">
+                  {member.user.name ?? member.user.email}
+                </div>
+                <div className="text-sm text-muted">{member.user.email}</div>
               </div>
-              <div className="text-sm text-muted">{member.user.email}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                {ctx.role === "owner" ? (
+                  <form action={updateMemberRoleAction} className="flex gap-2">
+                    <input type="hidden" name="teamSlug" value={teamSlug} />
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <Select name="role" defaultValue={member.role}>
+                      <option value="owner">Owner</option>
+                      <option value="admin">Admin</option>
+                      <option value="member">Member</option>
+                    </Select>
+                    <Button type="submit" variant="secondary">
+                      Update
+                    </Button>
+                  </form>
+                ) : (
+                  <Badge>{member.role}</Badge>
+                )}
+                {manage && member.role !== "owner" ? (
+                  <form action={removeMemberAction}>
+                    <input type="hidden" name="teamSlug" value={teamSlug} />
+                    <input type="hidden" name="membershipId" value={member.id} />
+                    <Button type="submit" variant="danger">
+                      Remove
+                    </Button>
+                  </form>
+                ) : null}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {ctx.role === "owner" ? (
-                <form action={updateMemberRoleAction} className="flex gap-2">
-                  <input type="hidden" name="teamSlug" value={teamSlug} />
-                  <input type="hidden" name="membershipId" value={member.id} />
-                  <Select name="role" defaultValue={member.role}>
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                  </Select>
-                  <Button type="submit" variant="secondary">
-                    Update
-                  </Button>
-                </form>
+
+            <div className="rounded-md border border-border bg-background/60 p-3">
+              <div className="mb-2 text-sm font-medium text-foreground">
+                Holidays
+              </div>
+              {member.holidays.length === 0 ? (
+                <p className="mb-3 text-xs text-muted">No holidays configured.</p>
               ) : (
-                <Badge>{member.role}</Badge>
+                <ul className="mb-3 space-y-1.5">
+                  {member.holidays.map((holiday) => (
+                    <li
+                      key={holiday.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        <span className="font-medium tabular-nums">
+                          {toDayString(holiday.date)}
+                        </span>
+                        <span className="text-muted"> — {holiday.name}</span>
+                      </span>
+                      {manage ? (
+                        <form action={deleteMemberHolidayAction}>
+                          <input type="hidden" name="teamSlug" value={teamSlug} />
+                          <input
+                            type="hidden"
+                            name="holidayId"
+                            value={holiday.id}
+                          />
+                          <Button
+                            type="submit"
+                            variant="ghost"
+                            className="!px-2 !py-1 text-xs"
+                          >
+                            Remove
+                          </Button>
+                        </form>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               )}
-              {manage && member.role !== "owner" ? (
-                <form action={removeMemberAction}>
+              {manage ? (
+                <form
+                  action={createMemberHolidayAction}
+                  className="grid gap-2 sm:grid-cols-[140px_1fr_auto]"
+                >
                   <input type="hidden" name="teamSlug" value={teamSlug} />
                   <input type="hidden" name="membershipId" value={member.id} />
-                  <Button type="submit" variant="danger">
-                    Remove
-                  </Button>
+                  <div>
+                    <Label htmlFor={`date-${member.id}`}>Date</Label>
+                    <Input
+                      id={`date-${member.id}`}
+                      name="date"
+                      type="date"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`name-${member.id}`}>Name</Label>
+                    <Input
+                      id={`name-${member.id}`}
+                      name="name"
+                      placeholder="Holiday name"
+                      required
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="submit" variant="secondary">
+                      Add
+                    </Button>
+                  </div>
                 </form>
               ) : null}
             </div>

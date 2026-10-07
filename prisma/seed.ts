@@ -61,6 +61,108 @@ async function main() {
     },
   });
 
+  const ownerMembership = await prisma.membership.findUniqueOrThrow({
+    where: { teamId_userId: { teamId: team.id, userId: owner.id } },
+  });
+  const memberMembership = await prisma.membership.findUniqueOrThrow({
+    where: { teamId_userId: { teamId: team.id, userId: member.id } },
+  });
+
+  const year = utcToday().getUTCFullYear();
+  await prisma.memberHoliday.deleteMany({
+    where: {
+      membershipId: { in: [ownerMembership.id, memberMembership.id] },
+    },
+  });
+  await prisma.memberHoliday.createMany({
+    data: [
+      // US-style holidays for the owner
+      {
+        membershipId: ownerMembership.id,
+        date: new Date(Date.UTC(year, 0, 1)),
+        name: "New Year's Day",
+      },
+      {
+        membershipId: ownerMembership.id,
+        date: new Date(Date.UTC(year, 6, 4)),
+        name: "Independence Day",
+      },
+      {
+        membershipId: ownerMembership.id,
+        date: new Date(Date.UTC(year, 10, 26)),
+        name: "Thanksgiving",
+      },
+      {
+        membershipId: ownerMembership.id,
+        date: new Date(Date.UTC(year, 11, 25)),
+        name: "Christmas Day",
+      },
+      // DE-style holidays for the member
+      {
+        membershipId: memberMembership.id,
+        date: new Date(Date.UTC(year, 0, 1)),
+        name: "Neujahr",
+      },
+      {
+        membershipId: memberMembership.id,
+        date: new Date(Date.UTC(year, 4, 1)),
+        name: "Tag der Arbeit",
+      },
+      {
+        membershipId: memberMembership.id,
+        date: new Date(Date.UTC(year, 9, 3)),
+        name: "Tag der Deutschen Einheit",
+      },
+      {
+        membershipId: memberMembership.id,
+        date: new Date(Date.UTC(year, 11, 25)),
+        name: "Erster Weihnachtstag",
+      },
+      {
+        membershipId: memberMembership.id,
+        date: new Date(Date.UTC(year, 11, 26)),
+        name: "Zweiter Weihnachtstag",
+      },
+    ],
+  });
+
+  // Also seed nearby holidays relative to "today" so the active sprint range shows them
+  const today = utcToday();
+  const nearbyOwnerHoliday = addDays(today, 3);
+  const nearbyMemberHoliday = addDays(today, 5);
+  if (nearbyOwnerHoliday.getUTCDay() !== 0 && nearbyOwnerHoliday.getUTCDay() !== 6) {
+    await prisma.memberHoliday.upsert({
+      where: {
+        membershipId_date: {
+          membershipId: ownerMembership.id,
+          date: nearbyOwnerHoliday,
+        },
+      },
+      update: { name: "US office holiday" },
+      create: {
+        membershipId: ownerMembership.id,
+        date: nearbyOwnerHoliday,
+        name: "US office holiday",
+      },
+    });
+  }
+  if (nearbyMemberHoliday.getUTCDay() !== 0 && nearbyMemberHoliday.getUTCDay() !== 6) {
+    await prisma.memberHoliday.upsert({
+      where: {
+        membershipId_date: {
+          membershipId: memberMembership.id,
+          date: nearbyMemberHoliday,
+        },
+      },
+      update: { name: "DE office holiday" },
+      create: {
+        membershipId: memberMembership.id,
+        date: nearbyMemberHoliday,
+        name: "DE office holiday",
+      },
+    });
+  }
+
   const existingItems = await prisma.backlogItem.count({
     where: { teamId: team.id },
   });
@@ -177,6 +279,7 @@ async function main() {
         {
           teamId: team.id,
           backlogItemId: capacityItem.id,
+          assigneeId: owner.id,
           lane: WorkLane.development,
           startDate: sprintStart,
           endDate: addDays(sprintStart, 3),
@@ -184,6 +287,7 @@ async function main() {
         {
           teamId: team.id,
           backlogItemId: capacityItem.id,
+          assigneeId: member.id,
           lane: WorkLane.feature_testing,
           startDate: addDays(sprintStart, 4),
           endDate: addDays(sprintStart, 6),
@@ -191,6 +295,7 @@ async function main() {
         {
           teamId: team.id,
           backlogItemId: inviteItem.id,
+          assigneeId: member.id,
           lane: WorkLane.development,
           startDate: addDays(sprintStart, 2),
           endDate: addDays(sprintStart, 5),
@@ -198,6 +303,7 @@ async function main() {
         {
           teamId: team.id,
           backlogItemId: inviteItem.id,
+          assigneeId: owner.id,
           lane: WorkLane.feature_testing,
           startDate: addDays(sprintStart, 6),
           endDate: addDays(sprintStart, 8),
