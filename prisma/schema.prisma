@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  owner
+  admin
+  member
+}
+
+enum SprintStatus {
+  planning
+  active
+  completed
+}
+
+enum BacklogStatus {
+  backlog
+  committed
+  done
+}
+
+enum Priority {
+  low
+  medium
+  high
+  urgent
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  invitesSent   Invite[]  @relation("InviteSender")
+  capacities    MemberCapacity[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Team {
+  id           String           @id @default(cuid())
+  name         String
+  slug         String           @unique
+  memberships  Membership[]
+  invites      Invite[]
+  sprints      Sprint[]
+  backlogItems BacklogItem[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      Role     @default(member)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, userId])
+}
+
+model Invite {
+  id          String   @id @default(cuid())
+  teamId      String
+  email       String
+  role        Role     @default(member)
+  token       String   @unique @default(cuid())
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy   User     @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([teamId, email])
+}
+
+model Sprint {
+  id             String           @id @default(cuid())
+  teamId         String
+  name           String
+  goal           String?
+  startDate      DateTime
+  endDate        DateTime
+  capacityPoints Int              @default(0)
+  status         SprintStatus     @default(planning)
+  team           Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  items          SprintItem[]
+  capacities     MemberCapacity[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([teamId])
+}
+
+model BacklogItem {
+  id          String        @id @default(cuid())
+  teamId      String
+  title       String
+  description String?       @db.Text
+  storyPoints Int?
+  priority    Priority      @default(medium)
+  status      BacklogStatus @default(backlog)
+  sortOrder   Int           @default(0)
+  team        Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sprintItem  SprintItem?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([teamId, sortOrder])
+}
+
+model SprintItem {
+  id            String      @id @default(cuid())
+  sprintId      String
+  backlogItemId String      @unique
+  sortOrder     Int         @default(0)
+  sprint        Sprint      @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  backlogItem   BacklogItem @relation(fields: [backlogItemId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@index([sprintId, sortOrder])
+}
+
+model MemberCapacity {
+  id             String @id @default(cuid())
+  sprintId       String
+  userId         String
+  availablePoints Int   @default(0)
+  sprint         Sprint @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sprintId, userId])
+}

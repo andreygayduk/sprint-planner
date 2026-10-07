@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sprint Planner
 
-## Getting Started
+Next.js sprint planning app for scrum sessions — backlog prioritization, sprint commitment, capacity tracking, and multi-team auth.
 
-First, run the development server:
+## Stack
+
+- Next.js (App Router) + TypeScript + Tailwind CSS
+- Auth.js (credentials + optional GitHub OAuth)
+- Prisma + PostgreSQL
+- `@dnd-kit` for backlog/sprint reorder
+
+## Local setup
+
+### 1. Start Postgres
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Postgres is exposed on **port 5433** (to avoid clashing with other local databases).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env
+```
 
-## Learn More
+Defaults work for local Docker. Generate a strong `AUTH_SECRET` for anything beyond local use. Optionally set `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` for GitHub login.
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Install, migrate, seed
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npx prisma migrate dev
+npm run seed
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open [http://localhost:3000](http://localhost:3000).
 
-## Deploy on Vercel
+### Demo accounts (after seed)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Email | Password | Role |
+|-------|----------|------|
+| `owner@example.com` | `password123` | Owner of **Platform** |
+| `member@example.com` | `password123` | Member of **Platform** |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Team URL: `/t/platform/backlog`
+
+## Features
+
+- Email/password registration and login (GitHub optional)
+- Create teams; path-based tenancy under `/t/[teamSlug]`
+- Invite members by email; accept via `/invite/[token]`
+- Backlog CRUD with story points, priority, and drag reorder
+- Sprints with capacity vs commitment meter
+- Assign/unassign backlog items to a sprint board
+- Per-member capacity that rolls up to team capacity
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Next.js |
+| `npm run build` | Production build |
+| `npm run seed` | Load demo user/team/backlog |
+| `npx prisma studio` | Browse the database |

@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: sprint
+      POSTGRES_PASSWORD: sprint
+      POSTGRES_DB: sprint_planner
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
